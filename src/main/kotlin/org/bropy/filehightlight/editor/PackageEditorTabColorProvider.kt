@@ -9,14 +9,14 @@ import com.intellij.psi.PsiManager
 import org.bropy.filehightlight.settings.PackageHighlighterSettings
 import java.awt.Color
 import kotlin.math.abs
+import java.util.concurrent.ConcurrentHashMap
+import java.util.Collections
 
 class PackageEditorTabColorProvider : EditorTabColorProvider {
 
-    // Cache to store previously generated colors for packages
-    private val colorCache = mutableMapOf<String, Color>()
-
-    // Set to track used colors to avoid repetition
-    private val usedColors = mutableSetOf<Int>()
+    // Changed to thread-safe collections
+    private val colorCache = ConcurrentHashMap<String, Color>()
+    private val usedColors = Collections.synchronizedSet(mutableSetOf<Int>())
 
     override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
         if (!file.isValid) return null
@@ -27,14 +27,14 @@ class PackageEditorTabColorProvider : EditorTabColorProvider {
         // Get the package name from the PSI file
         val psiFile = PsiManager.getInstance(project).findFile(file) ?: return null
 
-        // Only process Java and Kotlin files
+        // Process all file types
         val fileExt = file.extension
-        if (fileExt != "java" && fileExt != "kt" && fileExt != "kts") return null
 
+        // Get package name if it's a Java or Kotlin file, otherwise use directory structure
         val packageName = when {
             psiFile is PsiJavaFile -> psiFile.packageName
             fileExt == "kt" || fileExt == "kts" -> extractKotlinPackageName(psiFile)
-            else -> return null
+            else -> extractPackageFromPath(file)
         }
 
         // Return a color based on the package name
@@ -42,16 +42,39 @@ class PackageEditorTabColorProvider : EditorTabColorProvider {
     }
 
     private fun extractKotlinPackageName(psiFile: PsiFile): String {
-        // Simple extraction based on text for MVP
-        // In a full implementation, use Kotlin PSI API
         val text = psiFile.text
         val packageRegex = "package\\s+([\\w.]+)".toRegex()
         val matchResult = packageRegex.find(text)
         return matchResult?.groupValues?.getOrNull(1) ?: ""
     }
 
+    private fun extractPackageFromPath(file: VirtualFile): String {
+        // Extract a package-like structure from file path
+        val path = file.path
+        val projectIndex = path.indexOf("/src/")
+
+        if (projectIndex >= 0) {
+            val relativePath = path.substring(projectIndex + 5)
+            val lastSlash = relativePath.lastIndexOf('/')
+
+            if (lastSlash >= 0) {
+                // Convert directory structure to package-like format
+                return relativePath.substring(0, lastSlash).replace('/', '.')
+            }
+        }
+
+        // Fallback: use parent directory name
+        val parentDir = file.parent?.name ?: ""
+        return parentDir
+    }
+
     private fun getColorForPackage(packageName: String): Color {
         val settings = PackageHighlighterSettings.getInstance()
+
+        // If packages should be sorted alphabetically, clear the cache to ensure fresh colors
+        if (settings.sortAlphabetically && colorCache.isNotEmpty()) {
+            colorCache.clear()
+        }
 
         // Check if we have predefined colors for specific packages
         settings.packageColors.forEach { (pkg, colorHex) ->
@@ -96,30 +119,52 @@ class PackageEditorTabColorProvider : EditorTabColorProvider {
     }
 
     private fun generateDistinctColor(key: String, fullPackage: String): Color {
+        val settings = PackageHighlighterSettings.getInstance()
+
+        // Use settings values if custom settings are enabled
+        val targetSaturation = if (settings.useDefaultBrightness) 0.15f else settings.saturation
+        val targetBrightness = if (settings.useDefaultBrightness) 0.82f else settings.brightness
+
         for (attempt in 0 until 15) {
             val baseHash = (key.hashCode() + attempt * 10000 + fullPackage.length * 17) * (attempt + 1)
 
             val h = ((abs(baseHash) % 360) / 360.0f)  // Hue (0-1)
-            val s = (0.10f + (abs(baseHash / 1000) % 10) / 100.0f)  // Saturation (0.10-0.20) — дуже низька
-            val b = (0.80f + (abs(baseHash / 10000) % 5) / 100.0f)  // Brightness (0.80-0.85) — трохи приглушено
+
+            // Apply user's saturation preferences with small variance
+            val s = if (settings.useDefaultBrightness) {
+                (0.10f + (abs(baseHash / 1000) % 10) / 100.0f)  // Saturation (0.10-0.20) — low
+            } else {
+                (targetSaturation - 0.05f + (abs(baseHash / 1000) % 10) / 100.0f)  // Custom saturation with variance
+            }
+
+            // Apply user's brightness preferences with small variance
+            val b = if (settings.useDefaultBrightness) {
+                (0.80f + (abs(baseHash / 10000) % 5) / 100.0f)  // Brightness (0.80-0.85) — slightly muted
+            } else {
+                (targetBrightness - 0.03f + (abs(baseHash / 10000) % 6) / 100.0f)  // Custom brightness with variance
+            }
 
             val color = Color.getHSBColor(h, s, b)
             val colorValue = color.rgb
 
             if (!isTooSimilarToExisting(colorValue)) {
-                usedColors.add(colorValue)
+                synchronized(usedColors) {
+                    usedColors.add(colorValue)
+                }
                 return color
             }
         }
 
-        // Фолбек — теж з менш інтенсивним кольором
+        // Fallback with less intense color
         val hash = fullPackage.hashCode()
         val h = ((abs(hash) % 360) / 360.0f)
-        val s = 0.15f  // Низька насиченість
-        val b = 0.82f  // Помірна яскравість
+        val s = targetSaturation  // Use custom or default saturation
+        val b = targetBrightness  // Use custom or default brightness
 
         val color = Color.getHSBColor(h, s, b)
-        usedColors.add(color.rgb)
+        synchronized(usedColors) {
+            usedColors.add(color.rgb)
+        }
         return color
     }
 
@@ -130,7 +175,10 @@ class PackageEditorTabColorProvider : EditorTabColorProvider {
         val newColor = Color(colorValue)
         val newHsb = Color.RGBtoHSB(newColor.red, newColor.green, newColor.blue, null)
 
-        for (existingColorValue in usedColors) {
+        // Create a copy of usedColors to avoid ConcurrentModificationException
+        val colorsCopy = synchronized(usedColors) { usedColors.toSet() }
+
+        for (existingColorValue in colorsCopy) {
             val existingColor = Color(existingColorValue)
             val existingHsb = Color.RGBtoHSB(existingColor.red, existingColor.green, existingColor.blue, null)
 

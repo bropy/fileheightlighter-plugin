@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
     <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
@@ -7,21 +8,56 @@
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
     <name>FileHightLight</name>
 
+    <!-- Plugin version -->
+    <version>1.0.0</version>
+
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
-    <vendor email="" url="https://www.yourcompany.com">Bropy</vendor>
+    <vendor email="support@bropy.com" url="https://www.bropy.com">Bropy</vendor>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description><![CDATA[
-    Enter short description for your plugin here.<br>
-    <em>most HTML tags may be used</em>
-  ]]></description>
+        <p>FileHightLight enhances your IDE experience by automatically highlighting editor tabs based on their package
+        or directory structure. This visual aid makes it easier to identify and navigate between files of different modules
+        or packages.</p>
 
+        <p><b>Features:</b></p>
+        <ul>
+            <li>Automatic tab colorization based on package/directory structure</li>
+            <li>Custom color mapping for specific packages</li>
+            <li>Adjustable brightness and saturation settings</li>
+            <li>Alphabetical sorting option for consistent color assignments</li>
+            <li>Works with all file types, not just Java and Kotlin</li>
+        </ul>
+
+        <p>Improve your workflow by quickly identifying files from different packages with color-coded tabs!</p>
+        <p>Created by Bohdan</p>
+        <ul>
+            <li><a href="https://github.com/bropy" target="_blank">bropy (GitHub)</a></li>
+            <li><a href="https://www.linkedin.com/in/bohdandesna/" target="_blank">Bohdan Desna (LinkedIn)</a></li>
+        </ul>
+        <p>Special thanks to Rob Hill, the serial entrepreneur and senior developer with experience in multiple operating systems, languages, and databases.</p>
+
+]]></description>
+
+    <!-- Short summary displayed in plugin details -->
+    <change-notes><![CDATA[
+        <ul>
+            <li>1.0.0: Initial release with package-based tab highlighting</li>
+            <li>Support for custom package colors</li>
+            <li>Adjustable brightness and saturation</li>
+            <li>Alphabetical sorting option</li>
+        </ul>
+    ]]></change-notes>
+
+    <!-- Minimum and maximum IDE version compatibility -->
+    <idea-version since-build="223" until-build="251.*"/>
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.java</depends>
+
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
@@ -30,8 +66,15 @@
                 parentId="tools"
                 instance="org.bropy.filehightlight.settings.PackageHighlighterSettingsComponent"
                 id="org.bropy.filehightlight.settings.PackageHighlighterSettingsComponent"
-                displayName="Package Highlighter Settings"/>
+                displayName="Package Highlighter"/>
         <applicationService
                 serviceImplementation="org.bropy.filehightlight.settings.PackageHighlighterSettings"/>
+        <toolWindow id="FileHightLight" secondary="true" icon="/META-INF/pluginIcon.svg" anchor="right"
+                    factoryClass="org.bropy.filehightlight.toolwindow.FileHighlightToolWindowFactory"/>
+
     </extensions>
+
+    <!-- Plugin's category for better organization in the marketplace -->
+    <category>UI</category>
+
 </idea-plugin>
